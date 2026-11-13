@@ -1,0 +1,92 @@
+blueprint:
+  name: Brink WTW – night mode & summer night cooling
+  description: >
+    At night the Brink goes to mode 1 (quiet). If a "summer mode" switch is
+    on and it is at least 2 °C cooler outside than inside, it goes to mode 3
+    instead (free night cooling, bypass on Auto). In the morning it returns
+    to mode 2.
+    Requires the package `brink_wtw.yaml`.
+  domain: automation
+  source_url: https://github.com/LordRednas/brink-excellent-ebusd-ha/blob/main/blueprints/automation/brink_wtw/night_mode.yaml
+  input:
+    night_time:
+      name: Night mode at
+      default: "23:30:00"
+      selector:
+        time: {}
+    morning_time:
+      name: Back to mode 2 at
+      default: "07:00:00"
+      selector:
+        time: {}
+    summer_mode:
+      name: Summer mode switch (optional)
+      default: []
+      selector:
+        entity:
+          domain: input_boolean
+          multiple: true
+    block_entity:
+      name: Do nothing when this is on (optional, e.g. vacation mode)
+      default: []
+      selector:
+        entity:
+          domain: input_boolean
+          multiple: true
+    inside_temp:
+      name: Inside (extract air) temperature
+      default: sensor.heating_ebusd_excellent_insidetemperature
+      selector:
+        entity: { domain: sensor }
+    outside_temp:
+      name: Outside temperature
+      default: sensor.heating_ebusd_excellent_outsidetemperature
+      selector:
+        entity: { domain: sensor }
+
+mode: restart
+
+triggers:
+  - trigger: time
+    at: !input night_time
+    id: night
+  - trigger: time
+    at: !input morning_time
+    id: morning
+
+variables:
+  summer_mode: !input summer_mode
+  block_entity: !input block_entity
+  inside_temp: !input inside_temp
+  outside_temp: !input outside_temp
+
+conditions:
+  - condition: template
+    value_template: "{{ block_entity | select('is_state', 'on') | list | count == 0 }}"
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: night
+          - condition: template
+            value_template: >
+              {{ summer_mode | select('is_state', 'on') | list | count > 0
+                 and states(outside_temp) | float(99) < states(inside_temp) | float(0) - 2 }}
+        sequence:
+          - action: script.brink_wtw_set_mode
+            data: { mode: High }
+          - action: script.brink_wtw_set_bypass
+            data: { mode: Auto }
+      - conditions:
+          - condition: trigger
+            id: night
+        sequence:
+          - action: script.brink_wtw_set_mode
+            data: { mode: Reduced }
+      - conditions:
+          - condition: trigger
+            id: morning
+        sequence:
+          - action: script.brink_wtw_set_mode
+            data: { mode: Normal }
