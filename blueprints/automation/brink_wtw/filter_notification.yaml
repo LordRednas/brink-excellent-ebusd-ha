@@ -1,0 +1,67 @@
+blueprint:
+  name: Brink WTW – filter notification
+  description: >
+    Sends a push notification when the Brink reports dirty filters, and a
+    daily reminder for as long as the notification stays active.
+  domain: automation
+  source_url: https://github.com/LordRednas/brink-excellent-ebusd-ha/blob/main/blueprints/automation/brink_wtw/filter_notification.yaml
+  input:
+    filter_sensor:
+      name: Brink filter status sensor (from ebusd)
+      default: sensor.heating_ebusd_excellent_filterstatus
+      selector:
+        entity:
+          domain: sensor
+    notify_services:
+      name: Notify services
+      description: >
+        One per line, without "notify.", e.g. mobile_app_my_phone
+        (see Developer tools → Actions → search "notify.").
+      selector:
+        text:
+          multiple: true
+    reminder_time:
+      name: Daily reminder at
+      default: "19:00:00"
+      selector:
+        time: {}
+    dashboard_url:
+      name: Open this dashboard path when tapping the notification (optional)
+      default: ""
+      selector:
+        text: {}
+
+mode: single
+
+triggers:
+  - trigger: state
+    entity_id: !input filter_sensor
+    to: "yes"
+    for: { minutes: 10 }
+    id: new
+  - trigger: time
+    at: !input reminder_time
+    id: reminder
+
+conditions:
+  - condition: state
+    entity_id: !input filter_sensor
+    state: "yes"
+
+variables:
+  notify_services: !input notify_services
+  dashboard_url: !input dashboard_url
+
+actions:
+  - repeat:
+      for_each: "{{ notify_services }}"
+      sequence:
+        - action: "notify.{{ repeat.item | replace('notify.', '') }}"
+          data:
+            title: "🧽 Ventilation filters dirty"
+            message: >
+              {% if trigger.id == 'reminder' %}Reminder: the{% else %}The{% endif %}
+              Brink ventilation unit reports that the filters need cleaning or replacing.
+              Reset the filter notification afterwards.
+            data:
+              url: "{{ dashboard_url }}"
