@@ -1,6 +1,6 @@
 # Brink Renovent Excellent + ebusd + Home Assistant
 
-🇬🇧 [English version](README.md)
+🇬🇧 [English version](README.md) · 🪜 **[Stap-voor-stap-handleiding](docs/stap-voor-stap.md)** (adapter, ebusd-add-on, Brink-menu 08/09)
 
 Volledig lokaal uitlezen **én bedienen** van een **Brink Renovent Excellent 300** WTW in Home Assistant, met een **eBUS Adapter C6**-stick en de **ebusd**-add-on. Zonder Brink-cloud, zonder eModule en zonder Air Control-paneel.
 
