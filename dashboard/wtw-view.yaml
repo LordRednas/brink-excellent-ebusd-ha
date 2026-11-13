@@ -1,0 +1,191 @@
+# Brink WTW dashboard view (sections layout)
+# Needs (HACS): Mushroom cards, ApexCharts card
+# Paste as a new view: Dashboard → ⋮ → Edit → ⋮ → Raw configuration editor,
+# and add this block under "views:".
+title: WTW
+path: wtw
+icon: mdi:hvac
+type: sections
+max_columns: 2
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: 🌬️ Brink Renovent Excellent
+      - type: custom:mushroom-template-card
+        entity: sensor.heating_ebusd_excellent_fanmode
+        icon: mdi:fan
+        icon_color: teal
+        primary: >-
+          {% set m = {'Holiday':'Away','Reduced':'Mode 1 · reduced','Normal':'Mode 2 · normal','High':'Mode 3 · high'} %}
+          {% set s = states('sensor.heating_ebusd_excellent_fanmode') %}{{ m.get(s, s) }}
+        secondary: >-
+          💨 Supply {{ states('sensor.brink_wtw_airflow_supply') }} ·
+          Exhaust {{ states('sensor.brink_wtw_airflow_exhaust') }} m³/h ·
+          eBUS {{ '✅' if is_state('binary_sensor.heating_ebusd_global_signal','on') else '❌' }}
+        tap_action:
+          action: more-info
+      - type: custom:mushroom-chips-card
+        alignment: justify
+        chips:
+          - type: template
+            content: Away
+            icon: mdi:fan-off
+            icon_color: "{{ 'grey' if is_state('sensor.heating_ebusd_excellent_fanmode','Holiday') else 'disabled' }}"
+            tap_action:
+              action: perform-action
+              perform_action: script.brink_wtw_set_mode
+              data: { mode: Holiday }
+          - type: template
+            content: "1"
+            icon: mdi:fan-speed-1
+            icon_color: "{{ 'teal' if is_state('sensor.heating_ebusd_excellent_fanmode','Reduced') else 'disabled' }}"
+            tap_action:
+              action: perform-action
+              perform_action: script.brink_wtw_set_mode
+              data: { mode: Reduced }
+          - type: template
+            content: "2"
+            icon: mdi:fan-speed-2
+            icon_color: "{{ 'blue' if is_state('sensor.heating_ebusd_excellent_fanmode','Normal') else 'disabled' }}"
+            tap_action:
+              action: perform-action
+              perform_action: script.brink_wtw_set_mode
+              data: { mode: Normal }
+          - type: template
+            content: "3"
+            icon: mdi:fan-speed-3
+            icon_color: "{{ 'orange' if is_state('sensor.heating_ebusd_excellent_fanmode','High') else 'disabled' }}"
+            tap_action:
+              action: perform-action
+              perform_action: script.brink_wtw_set_mode
+              data: { mode: High }
+      - type: entities
+        title: 🌡️ Climate
+        entities:
+          - entity: sensor.heating_ebusd_excellent_insidetemperature
+            name: Extract air (from home)
+          - entity: sensor.heating_ebusd_excellent_outsidetemperature
+            name: Outside air
+          - entity: sensor.brink_wtw_supply_air_temperature_estimated
+            name: Supply air to home (estimated)
+          - entity: sensor.heating_ebusd_excellent_relativehumidity
+            name: Relative humidity
+      - type: entities
+        title: 💨 Fans
+        entities:
+          - entity: sensor.brink_wtw_airflow_supply
+            name: Airflow supply (actual)
+          - entity: sensor.brink_wtw_airflow_exhaust
+            name: Airflow exhaust (actual)
+          - entity: sensor.brink_wtw_airflow_supply_setpoint
+            name: Airflow supply (setpoint)
+          - entity: sensor.brink_wtw_airflow_exhaust_setpoint
+            name: Airflow exhaust (setpoint)
+          - entity: sensor.brink_wtw_supply_fan_speed
+            name: Supply fan
+          - entity: sensor.brink_wtw_exhaust_fan_speed
+            name: Exhaust fan
+          - entity: sensor.heating_ebusd_excellent_fanstatus
+            name: Fan status
+  - type: grid
+    cards:
+      - type: heading
+        heading: ☀️ Bypass
+        heading_style: subtitle
+      - type: custom:mushroom-chips-card
+        alignment: justify
+        chips:
+          - type: template
+            content: Auto
+            icon: mdi:autorenew
+            icon_color: "{{ 'green' if is_state('sensor.heating_ebusd_excellent_bypassmode_autocloseopen','Auto') else 'disabled' }}"
+            tap_action:
+              action: perform-action
+              perform_action: script.brink_wtw_set_bypass
+              data: { mode: Auto }
+          - type: template
+            content: Closed
+            icon: mdi:valve-closed
+            icon_color: "{{ 'blue' if is_state('sensor.heating_ebusd_excellent_bypassmode_autocloseopen','Closed') else 'disabled' }}"
+            tap_action:
+              action: perform-action
+              perform_action: script.brink_wtw_set_bypass
+              data: { mode: Closed }
+          - type: template
+            content: Open
+            icon: mdi:valve-open
+            icon_color: "{{ 'amber' if is_state('sensor.heating_ebusd_excellent_bypassmode_autocloseopen','Open') else 'disabled' }}"
+            tap_action:
+              action: perform-action
+              perform_action: script.brink_wtw_set_bypass
+              data: { mode: Open }
+      - type: entities
+        entities:
+          - entity: sensor.heating_ebusd_excellent_bypassstatus
+            name: Bypass valve
+          - entity: sensor.heating_ebusd_excellent_bypasstemp_temp10
+            name: Bypass temperature
+          - entity: sensor.heating_ebusd_excellent_bypasstemphyst_temp10
+            name: Bypass hysteresis
+          - entity: sensor.heating_ebusd_excellent_froststatus
+            name: Frost protection
+      - type: entities
+        title: 🧽 Maintenance
+        entities:
+          - entity: sensor.heating_ebusd_excellent_filterstatus
+            name: Filter dirty
+          - entity: sensor.brink_wtw_filter_age
+            name: Filters in use
+          - entity: input_datetime.brink_wtw_filter_last_reset
+            name: Last cleaned / reset
+          - entity: binary_sensor.heating_ebusd_global_signal
+            name: eBUS signal
+      - type: custom:mushroom-template-card
+        primary: Reset filter notification
+        secondary: Only after cleaning/replacing the filters
+        icon: mdi:air-filter
+        icon_color: "{{ 'orange' if is_state('sensor.heating_ebusd_excellent_filterstatus','yes') else 'grey' }}"
+        tap_action:
+          action: perform-action
+          perform_action: script.brink_wtw_filter_reset
+          confirmation:
+            text: Filters really cleaned or replaced? This resets the filter notification and the filter counter.
+  - type: grid
+    column_span: 2
+    cards:
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: 🌡️ Temperatures (24 h)
+          show_states: true
+          colorize_states: true
+        graph_span: 24h
+        series:
+          - entity: sensor.heating_ebusd_excellent_insidetemperature
+            name: Extract (from home)
+            group_by: { func: avg, duration: 10min }
+          - entity: sensor.brink_wtw_supply_air_temperature_estimated
+            name: Supply (estimated)
+            group_by: { func: avg, duration: 10min }
+          - entity: sensor.heating_ebusd_excellent_outsidetemperature
+            name: Outside
+            group_by: { func: avg, duration: 10min }
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: 💨 Airflow (24 h)
+          show_states: true
+          colorize_states: true
+        graph_span: 24h
+        yaxis:
+          - min: 0
+        series:
+          - entity: sensor.brink_wtw_airflow_supply
+            name: Supply
+            type: area
+            opacity: 0.25
+            group_by: { func: avg, duration: 10min }
+          - entity: sensor.brink_wtw_airflow_exhaust
+            name: Exhaust
+            group_by: { func: avg, duration: 10min }
