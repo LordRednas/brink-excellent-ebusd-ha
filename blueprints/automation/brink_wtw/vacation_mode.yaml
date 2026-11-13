@@ -1,0 +1,31 @@
+blueprint:
+  name: Brink WTW – vacation mode
+  description: >
+    When your vacation switch turns on, the Brink goes to "Holiday" (away).
+    When it turns off, the Brink goes back to mode 2.
+    Requires the package `brink_wtw.yaml`.
+  domain: automation
+  source_url: https://github.com/LordRednas/brink-excellent-ebusd-ha/blob/main/blueprints/automation/brink_wtw/vacation_mode.yaml
+  input:
+    vacation_switch:
+      name: Vacation switch
+      selector:
+        entity:
+          domain: input_boolean
+
+mode: restart
+
+triggers:
+  - trigger: state
+    entity_id: !input vacation_switch
+    to: "on"
+    id: "on"
+  - trigger: state
+    entity_id: !input vacation_switch
+    to: "off"
+    id: "off"
+
+actions:
+  - action: script.brink_wtw_set_mode
+    data:
+      mode: "{{ 'Holiday' if trigger.id == 'on' else 'Normal' }}"
