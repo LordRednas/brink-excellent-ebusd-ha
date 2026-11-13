@@ -1,0 +1,244 @@
+# =====================================================================
+# Brink Renovent Excellent 300 – Home Assistant package (ebusd + MQTT)
+# =====================================================================
+# Requirements:
+#   - ebusd add-on running and connected to your eBUS adapter
+#   - MQTT broker (e.g. Mosquitto add-on) + MQTT integration
+#   - ebusd publishes under the topic prefix "ebusd/" and the Brink is
+#     detected as circuit "excellent" (ENCON, slave address 3c)
+#
+# Install: put this file in /config/packages/ and make sure you have
+#   homeassistant:
+#     packages: !include_dir_named packages
+# in configuration.yaml. Then restart Home Assistant.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Extra MQTT sensors that the default ebusd/HA integration does not
+# create on its own: actual air flow and fan speeds.
+# (ebusd only publishes these once they are polled – see the
+#  "brink_wtw_poll_airflow" script and automation below.)
+# ---------------------------------------------------------------------
+mqtt:
+  sensor:
+    - name: "Brink WTW airflow supply"
+      unique_id: brink_wtw_inletflow
+      state_topic: "ebusd/excellent/InletFlow"
+      value_template: "{% set v = (value_json.values() | list)[0] %}{{ v.value if v is mapping else v }}"
+      unit_of_measurement: "m³/h"
+      state_class: measurement
+      icon: mdi:home-import-outline
+    - name: "Brink WTW airflow exhaust"
+      unique_id: brink_wtw_exhaustflow
+      state_topic: "ebusd/excellent/ExhaustFlow"
+      value_template: "{% set v = (value_json.values() | list)[0] %}{{ v.value if v is mapping else v }}"
+      unit_of_measurement: "m³/h"
+      state_class: measurement
+      icon: mdi:home-export-outline
+    - name: "Brink WTW airflow supply setpoint"
+      unique_id: brink_wtw_settinginletflow
+      state_topic: "ebusd/excellent/SettingInletFlow"
+      value_template: "{% set v = (value_json.values() | list)[0] %}{{ v.value if v is mapping else v }}"
+      unit_of_measurement: "m³/h"
+      state_class: measurement
+      icon: mdi:tune
+    - name: "Brink WTW airflow exhaust setpoint"
+      unique_id: brink_wtw_settingexhaustflow
+      state_topic: "ebusd/excellent/SettingExhaustFlow"
+      value_template: "{% set v = (value_json.values() | list)[0] %}{{ v.value if v is mapping else v }}"
+      unit_of_measurement: "m³/h"
+      state_class: measurement
+      icon: mdi:tune
+    - name: "Brink WTW supply fan speed"
+      unique_id: brink_wtw_inletfanspeed
+      state_topic: "ebusd/excellent/InletFanSpeed"
+      value_template: "{% set v = (value_json.values() | list)[0] %}{{ v.value if v is mapping else v }}"
+      unit_of_measurement: "rpm"
+      state_class: measurement
+      icon: mdi:fan
+    - name: "Brink WTW exhaust fan speed"
+      unique_id: brink_wtw_exhaustfanspeed
+      state_topic: "ebusd/excellent/ExhaustFanSpeed"
+      value_template: "{% set v = (value_json.values() | list)[0] %}{{ v.value if v is mapping else v }}"
+      unit_of_measurement: "rpm"
+      state_class: measurement
+      icon: mdi:fan
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+input_datetime:
+  brink_wtw_filter_last_reset:
+    name: "Brink WTW filters last reset"
+    has_date: true
+    has_time: false
+    icon: mdi:air-filter
+
+template:
+  - sensor:
+      - name: "Brink WTW filter age"
+        unique_id: brink_wtw_filter_age
+        unit_of_measurement: "d"
+        state_class: measurement
+        icon: mdi:calendar-clock
+        state: >
+          {% set d = states('input_datetime.brink_wtw_filter_last_reset') %}
+          {% if d in ['unknown', 'unavailable', ''] %}{{ none }}
+          {% else %}{{ (now().date() - strptime(d, '%Y-%m-%d').date()).days }}{% endif %}
+
+      # The Excellent has no supply-air sensor. This is an ESTIMATE using
+      # the 95 % efficiency from the Brink manual (real-world is usually lower).
+      - name: "Brink WTW supply air temperature (estimated)"
+        unique_id: brink_wtw_supply_air_estimated
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        icon: mdi:home-import-outline
+        state: >
+          {% set i = states('sensor.heating_ebusd_excellent_insidetemperature') %}
+          {% set o = states('sensor.heating_ebusd_excellent_outsidetemperature') %}
+          {% if i in ['unknown','unavailable'] or o in ['unknown','unavailable'] %}{{ none }}
+          {% elif is_state('sensor.heating_ebusd_excellent_bypassstatus', 'Open') %}{{ o | float | round(1) }}
+          {% else %}{{ (o|float + 0.95 * (i|float - o|float)) | round(1) }}{% endif %}
+
+# ---------------------------------------------------------------------
+# Scripts
+# ---------------------------------------------------------------------
+script:
+  brink_wtw_set_mode:
+    alias: "Brink WTW – set fan mode"
+    description: >
+      Sets the fan mode via eBUS (SetFanModeAlt = the same message the Brink
+      Air Control panel sends) and reads the new mode back.
+    icon: mdi:fan
+    mode: restart
+    fields:
+      mode:
+        name: Mode
+        required: true
+        selector:
+          select:
+            options:
+              - label: "Away / holiday"
+                value: Holiday
+              - label: "1 – reduced"
+                value: Reduced
+              - label: "2 – normal"
+                value: Normal
+              - label: "3 – high"
+                value: High
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: ebusd/excellent/SetFanModeAlt/set
+          payload: "{{ mode }}"
+      - delay: { seconds: 3 }
+      - action: mqtt.publish
+        data:
+          topic: ebusd/excellent/FanMode/get
+          payload: ""
+
+  brink_wtw_set_bypass:
+    alias: "Brink WTW – set bypass mode"
+    description: >
+      Changes the bypass SETTING (menu step 07): Auto / Closed / Open.
+      This is persistent – set it back to Auto when you are done.
+    icon: mdi:valve
+    mode: restart
+    fields:
+      mode:
+        name: Mode
+        required: true
+        selector:
+          select:
+            options:
+              - label: Auto
+                value: Auto
+              - label: Closed
+                value: Closed
+              - label: Open
+                value: Open
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: ebusd/excellent/BypassMode/set
+          payload: "{{ mode }}"
+      - delay: { seconds: 3 }
+      - action: mqtt.publish
+        data:
+          topic: ebusd/excellent/BypassMode/get
+          payload: ""
+      - delay: { seconds: 30 }
+      - action: mqtt.publish
+        data:
+          topic: ebusd/excellent/BypassStatus/get
+          payload: ""
+
+  brink_wtw_filter_reset:
+    alias: "Brink WTW – reset filter notification"
+    description: >
+      Resets the filter notification AND the filter counter of the Brink.
+      Only use after the filters were actually cleaned or replaced.
+    icon: mdi:air-filter
+    mode: single
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: ebusd/excellent/ResetNotifications/set
+          payload: Filter
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.brink_wtw_filter_last_reset
+        data:
+          date: "{{ now().strftime('%Y-%m-%d') }}"
+      - delay: { seconds: 3 }
+      - action: mqtt.publish
+        data:
+          topic: ebusd/excellent/FilterStatus/get
+          payload: ""
+
+  brink_wtw_poll_airflow:
+    alias: "Brink WTW – poll actual airflow"
+    description: >
+      Asks ebusd to poll the actual airflow and fan speeds regularly
+      (MQTT payload "?1" = poll priority 1). ebusd forgets this on restart.
+    icon: mdi:weather-windy
+    mode: single
+    sequence:
+      - repeat:
+          for_each:
+            - InletFlow
+            - ExhaustFlow
+            - SettingInletFlow
+            - SettingExhaustFlow
+            - InletFanSpeed
+            - ExhaustFanSpeed
+          sequence:
+            - action: mqtt.publish
+              data:
+                topic: "ebusd/excellent/{{ repeat.item }}/get"
+                payload: "?1"
+            - delay: { milliseconds: 500 }
+
+# ---------------------------------------------------------------------
+# Automations
+# ---------------------------------------------------------------------
+automation:
+  - id: brink_wtw_poll_airflow_after_restart
+    alias: "Brink WTW – poll airflow after restart"
+    description: "Re-enable polling of airflow/fan speed after a restart of Home Assistant or ebusd."
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: state
+        entity_id: binary_sensor.heating_ebusd_global_running
+        to: "on"
+        for: { seconds: 30 }
+      - trigger: state
+        entity_id: binary_sensor.heating_ebusd_global_signal
+        to: "on"
+        for: { seconds: 30 }
+    actions:
+      - delay: { seconds: 30 }
+      - action: script.brink_wtw_poll_airflow
