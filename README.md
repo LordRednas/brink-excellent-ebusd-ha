@@ -1,6 +1,6 @@
 # Brink Renovent Excellent + ebusd + Home Assistant
 
-🇳🇱 [Nederlandse versie](README.nl.md)
+🇳🇱 [Nederlandse versie](README.nl.md) · 🪜 **[Step-by-step setup guide](docs/step-by-step.md)** (adapter, ebusd add-on, Brink menu 08/09)
 
 Fully local monitoring **and control** of a **Brink Renovent Excellent 300** heat-recovery ventilation unit (WTW / HRV) in Home Assistant, using an **eBUS Adapter C6** stick and the **ebusd** add-on. No Brink cloud, no eModule, no Air Control panel needed.
 
