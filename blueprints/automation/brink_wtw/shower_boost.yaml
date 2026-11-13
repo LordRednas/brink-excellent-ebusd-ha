@@ -1,0 +1,84 @@
+blueprint:
+  name: Brink WTW – shower boost (water flow)
+  description: >
+    When water flow stays above a threshold (e.g. someone is showering),
+    the Brink WTW goes to mode 3. After the water stops it keeps running
+    for a while and then restores the previous mode.
+    Requires the package `brink_wtw.yaml` (script.brink_wtw_set_mode).
+  domain: automation
+  source_url: https://github.com/LordRednas/brink-excellent-ebusd-ha/blob/main/blueprints/automation/brink_wtw/shower_boost.yaml
+  input:
+    water_flow:
+      name: Water flow sensor
+      description: A sensor that reports the current water flow (L/min), e.g. a HomeWizard water meter.
+      selector:
+        entity:
+          domain: sensor
+    flow_threshold:
+      name: Flow threshold (L/min)
+      default: 6
+      selector:
+        number: { min: 1, max: 30, step: 0.5, unit_of_measurement: "L/min" }
+    start_delay:
+      name: Water must flow for (minutes)
+      default: 2
+      selector:
+        number: { min: 1, max: 10, unit_of_measurement: min }
+    run_on:
+      name: Keep boosting after the water stops (minutes)
+      default: 15
+      selector:
+        number: { min: 0, max: 60, unit_of_measurement: min }
+    fan_mode_sensor:
+      name: Brink fan mode sensor (from ebusd)
+      default: sensor.heating_ebusd_excellent_fanmode
+      selector:
+        entity:
+          domain: sensor
+    block_entity:
+      name: Do not boost when this is on (optional, e.g. vacation mode)
+      default: []
+      selector:
+        entity:
+          domain: input_boolean
+          multiple: true
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input water_flow
+    above: !input flow_threshold
+    for:
+      minutes: !input start_delay
+
+variables:
+  fan_mode_sensor: !input fan_mode_sensor
+  block_entity: !input block_entity
+
+conditions:
+  - condition: template
+    value_template: "{{ block_entity | select('is_state', 'on') | list | count == 0 }}"
+  - condition: template
+    value_template: "{{ states(fan_mode_sensor) in ['Holiday', 'Reduced', 'Normal'] }}"
+
+actions:
+  - variables:
+      previous_mode: "{{ states(fan_mode_sensor) }}"
+  - action: script.brink_wtw_set_mode
+    data:
+      mode: High
+  - wait_for_trigger:
+      - trigger: numeric_state
+        entity_id: !input water_flow
+        below: 1
+        for: { minutes: 1 }
+    timeout: { minutes: 60 }
+  - delay:
+      minutes: !input run_on
+  - condition: template
+    value_template: "{{ is_state(fan_mode_sensor, 'High') }}"
+  - action: script.brink_wtw_set_mode
+    data:
+      mode: "{{ previous_mode }}"
